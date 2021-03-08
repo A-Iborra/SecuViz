@@ -6,17 +6,21 @@ library(shiny)
 library(rpart)
 library(readxl)
 library(dplyr)
+library(factoextra)
+library(ggpubr)
 library(ggplot2)
+library(sqldf)
+library(cluster)
+library(Rtsne)
+library(stringr)
 library(shinydashboard)
+library(GGally)
 anyLib::anyLib(c("shiny", "shinydashboard", "shinyWidgets", "DT", "plotly", "ggplot2", "colourpicker"))
 
-### Chargement et manipulation des données
-# data <- read.table("logs_fw-3.csv",sep=";",header = T)
-# data2 <- data[,c(6:12)]
-# data2[,c(1,2,4,5,7)] <- lapply(data2[,c(1,2,4,5,7)],as.factor)
 
+options(shiny.maxRequestSize=30*1024^3)
+source("fonctions.R")
 
-#colnames(data) <- c("ipsrc","ipdst","portdst","proto","action","date","regle")
 
 ### Définition des éléments de l'interface
 ui <- dashboardPage(
@@ -25,7 +29,8 @@ ui <- dashboardPage(
     sidebarMenu(id = "tabs",
                 menuItem("Home", tabName = "PagePrinc", icon = icon("home")),
                 menuItem("Analyse des Flux", tabName = "flux", icon = icon("poll")),
-                menuItem("CAH", tabName = "clustering", icon = icon("project-diagram")),
+                menuItem("t-SNE", tabName = "clustering", icon = icon("project-diagram")),
+                menuItem("K-means", tabName = "kmeans", icon = icon("spinner")),
                 menuItem("Arbre de décision", tabName = "arbre", icon = icon("tree")))
   
   ),
@@ -49,25 +54,21 @@ ui <- dashboardPage(
               h1("TOP 10/5")
               ),
       tabItem(tabName = "clustering",
-              h1("CAH"),
+              h1("t-SNE"),
               sliderInput("clusters", "Nombre de cluster:", 
                           min = 2,        # 1 cluster is pointless
                           max = 10,       # too many is too crowded
                           value = 4),    # sensible start
-              sliderInput("ip", "Se balader dans :", 
-                          min = 1,        # 1 cluster is pointless
-                          max = 149,       # too many is too crowded
-                          value = 1),  
-              # radioButtons("proto", "Protocole :",
-              #              c("TCP" = "tcp",
-              #                "UDP" = "udp",
-              #                "TCP & UDP" = "tcpudp")),
-              # radioButtons("ports", "Ports :",
-              #              c("Inférieur 1024" = "inf",
-              #                "Supérieur 1024" = "sup",
-              #                "Tous les ports" = "touslespo")),
-              plotlyOutput("distPlot"),
+              plotlyOutput("distPlot",width="800px",height = "800px"),
               verbatimTextOutput("summary")
+      ),
+      tabItem(tabName = "kmeans",
+              h1("Visualisation des variables selon cluster Kmeans"),
+              sliderInput("clusters2", "Nombre de cluster:", 
+                          min = 2,        # 1 cluster is pointless
+                          max = 10,       # too many is too crowded
+                          value = 3),    # sensible start
+              plotlyOutput("kgraph",width="500px",height = "500px")
       ),
       tabItem(tabName = "arbre",
               h1("Arbre de décision"),
@@ -88,7 +89,9 @@ server <- function(input, output, session){
     infile <- input$FileInput
     if(is.null(infile))
       return(NULL)
-    read.table(infile$datapath,sep= ";",header = TRUE)
+    L <- readLines(infile$datapath, n = 1)
+    numfields <- count.fields(textConnection(L), sep = ";")
+    if (numfields == 1) read.csv(infile$datapath,header = TRUE,fileEncoding="UTF-8-BOM") else read.csv2(infile$datapath,header = TRUE,fileEncoding="UTF-8-BOM")
   })
   
   observeEvent(
@@ -104,46 +107,40 @@ server <- function(input, output, session){
   
   
   output$distPlot <- renderPlotly({
-    data_clus <- datasetInput()[,c(6:12)]
-    data_clus <- data_clus %>% dplyr::filter(str_detect(ipsrc, "^1."))
-    data_clus[,c(1,2,4,5,7)] <- lapply(data_clus[,c(1,2,4,5,7)],as.factor)
-    gower_dist <- daisy(data_clus, metric = "gower")
-    gower_mat <- as.matrix(gower_dist)
+    data_clus <- datasetInput()[,c(3,6,8:11)]
     k <- input$clusters
+    res <- tsne_base(data_clus,k)
+    res[[1]]
+  })
+  
+
+  output$kgraph <- renderPlotly({
+    k2 <- input$clusters2
+    data <- datasetInput()
+    data_bis <- databis(data)
+    res.km <- kmeans(data_bis[,-c(3,7)],k2)
+
+    data_bis$cluster <- factor(res.km$cluster)
+    var <- c("nombre","cndstport","cluster")
+    data_graph <- data_bis %>% select(var)
     
-    pam_fit <- pam(gower_dist, diss = TRUE, k)
-    tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)
-    
-    tsne_data <- tsne_obj$Y %>%
-      data.frame() %>%
-      setNames(c("X", "Y")) %>%
-      mutate(cluster = factor(pam_fit$clustering)) %>% 
-      mutate(ipsource = data_clus$ipsrc)
-    
-    ggplot(aes(x = X, y = Y), data = tsne_data) +
-      geom_point(aes(color = cluster))
+    km_graph1(data_graph)
+
+    #ggplot(aes(x = nombre, y = cndstport), data = data_graph) +
+      #geom_point(aes(color = cluster))+ coord_cartesian(xlim =c(0, 40), ylim = c(0, 40))
   })
   
    output$summary <- renderPrint({
-     data_2 <- datasetInput()[,c(6:12)]
-     data_2 <- data_2 %>%  dplyr::filter(str_detect(ipsrc, "^1"))
-     data_2[,c(1,2,4,5,7)] <- lapply(data_2[,c(1,2,4,5,7)],as.factor)
-     gower_dist2 <- daisy(data_2, metric = "gower")
-     gower_mat2 <- as.matrix(gower_dist2)
+     data_2 <- datasetInput()[,c(3,6,8:11)]
      k2 <- input$clusters
-  
-     pam_fit2 <- pam(gower_dist2, diss = TRUE, k2)
-     pam_results2 <- data_2 %>%
-       mutate(cluster = pam_fit2$clustering) %>%
-       group_by(cluster) %>%
-       do(the_summary = summary(.))
-     pam_results2$the_summary
-  
+     res <- tsne_base(data_2,k2)
+     res[[2]]
 
   })
 
   observeEvent(input$go,{
     data = datasetInput()
+    data = data[1:30000,]
     #var = list()
     var = input$expli
     cib = as.character(input$cible)
@@ -152,14 +149,12 @@ server <- function(input, output, session){
     temp <- data %>% select(var,cib)
     #temp <- data[,input$expli,drop=FALSE]
     mod <- as.formula(paste0(cib, " ~ ."))
-    res <- rpart(mod,data=temp,method = "class", control = rpart.control(cp = 0.5, minsplit = 4),model =T)
+    res <- rpart(mod,data=temp,method = "class", control = rpart.control(cp = 0.05, minsplit  = 10,maxdepth=30),model =T)
     shiny::callModule(visTreeModuleServer, "id1", data = shiny::reactive(res))
   })
   
   
 }
-
-
 
 ### Lancement de l'application
 shinyApp(ui, server)
