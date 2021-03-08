@@ -11,8 +11,8 @@ anyLib::anyLib(c("shiny", "shinydashboard", "shinyWidgets", "DT", "plotly", "ggp
 #library(chorddiag)
 
 ### Chargement et manipulation des données
-data <- read.table("Jeu-1-projet.csv",sep=",")
-colnames(data) <- c("ipsrc","ipdst","portdst","proto","action","date","regle")
+#data <- read.table("Jeu-1-projet.csv",sep=",")
+#colnames(data) <- c("ipsrc","ipdst","portdst","proto","action","date","regle")
 
 ### Définition des éléments de l'interface
 ui <- dashboardPage(
@@ -28,8 +28,13 @@ ui <- dashboardPage(
     tabItems(
       tabItem(tabName = "PagePrinc",
               h1("Description du Projet"),
-              h1("Dictionnaire des données"),
-              h1("Données ?")
+              h1("Lecture des données"),
+              fileInput("FileInput",label = NULL,
+                        buttonLabel = "Browse...",
+                        placeholder = "No file selected"),
+              
+              h1("Données"),
+              dataTableOutput('table')
       ),
       
       # visualization
@@ -48,12 +53,15 @@ ui <- dashboardPage(
 
 ### Back-end
 server <- function(input, output, session){
-  # output$distPlot <- renderChorddiag({
-  #   temp <- as.data.frame(table(data$ipsrc))
-  #   temp = as.matrix(temp)
-  #   row.names(temp) = c(colnames(temp))
-  #   chorddiag(temp)
-  # })
+  
+  datasetInput <- reactive({
+    infile <- input$FileInput
+    if(is.null(infile))
+      return(NULL)
+    read.csv(infile$datapath, header = TRUE)
+  })
+  
+  output$table = DT::renderDataTable(datasetInput())
 }
 
 ### Lancement de l'application
