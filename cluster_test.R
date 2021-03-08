@@ -5,9 +5,9 @@ library(Rtsne)
 data <- read.table("Jeu-1-projet.csv",sep=",",header = T)
 data[,c(1,2,4:6)] <- lapply(data[,c(1,2,4:6)],as.factor)
 
-gower_dist <- daisy(data, metric = "gower")
+gower_dist <- daisy(data2, metric = "gower")
 gower_mat <- as.matrix(gower_dist)
-
+#str_detect()
 #Print most similar clients
 data[which(gower_mat == min(gower_mat[gower_mat != min(gower_mat)]), arr.ind = TRUE)[1, ], ]
 
