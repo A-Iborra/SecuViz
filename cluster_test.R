@@ -2,7 +2,7 @@ library(cluster)
 library(dplyr)
 library(ggplot2)
 library(Rtsne)
-
+data <- read.table("Jeu-1-projet.csv",sep=",",header = T)
 data[,c(1,2,4:6)] <- lapply(data[,c(1,2,4:6)],as.factor)
 
 gower_dist <- daisy(data, metric = "gower")
@@ -24,13 +24,13 @@ plot(1:20, sil_width,
      ylab = "Silhouette Width")
 lines(1:20, sil_width)
 
-k <- 8
+k <- 3
 pam_fit <- pam(gower_dist, diss = TRUE, k)
 pam_results <- data %>%
   mutate(cluster = pam_fit$clustering) %>%
-  group_by(cluster) %>%
-  do(the_summary = summary(.))
-pam_results$the_summary
+  group_by(cluster) #%>%
+  #do(the_summary = summary(.))
+#pam_results$the_summary
 
 
 tsne_obj <- Rtsne(gower_dist, is_distance = TRUE)

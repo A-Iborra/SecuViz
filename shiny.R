@@ -59,7 +59,7 @@ ui <- dashboardPage(
               #                "Supérieur 1024" = "sup",
               #                "Tous les ports" = "touslespo")),
               plotlyOutput("distPlot"),
-              textOutput("test")
+              verbatimTextOutput("summary")
       ),
       tabItem(tabName = "arbre",
               h1("Arbre de décision"),
@@ -97,8 +97,6 @@ server <- function(input, output, session){
   
   output$distPlot <- renderPlotly({
     data_clus <- datasetInput()
-    
-    
     data_clus[,c(1,2,4:6)] <- lapply(data_clus[,c(1,2,4:6)],as.factor)
     gower_dist <- daisy(data_clus, metric = "gower")
     gower_mat <- as.matrix(gower_dist)
@@ -117,34 +115,34 @@ server <- function(input, output, session){
       geom_point(aes(color = cluster))
   })
   
-  # output$test <- renderPrint({
-  #   data_2 <- datasetInput()
-  #   data_2[,c(1,2,4:6)] <- lapply(data_2[,c(1,2,4:6)],as.factor)
-  #   gower_dist2 <- daisy(data_2, metric = "gower")
-  #   gower_mat2 <- as.matrix(gower_dist2)
-  #   k2 <- input$clusters
-  #   
-  #   pam_fit2 <- pam(gower_dist2, diss = TRUE, k2)
-  #   pam_results2 <- data %>%
-  #     mutate(cluster = pam_fit2$clustering) %>%
-  #     group_by(cluster) %>%
-  #     do(the_summary = summary(.))
-  #   pam_results2$the_summary
-  #   
-    
-  #})
+   output$summary <- renderPrint({
+     data_2 <- datasetInput()
+     data_2[,c(1,2,4:6)] <- lapply(data_2[,c(1,2,4:6)],as.factor)
+     gower_dist2 <- daisy(data_2, metric = "gower")
+     gower_mat2 <- as.matrix(gower_dist2)
+     k2 <- input$clusters
   
+     pam_fit2 <- pam(gower_dist2, diss = TRUE, k2)
+     pam_results2 <- data_2 %>%
+       mutate(cluster = pam_fit2$clustering) %>%
+       group_by(cluster) %>%
+       do(the_summary = summary(.))
+     pam_results2$the_summary
+  
+
+  })
+
   observeEvent(input$go,{
     data = datasetInput()
     #var = list()
     var = input$expli
-    cib = input$cible
+    cib = as.character(input$cible)
     #temp <- data[,input$expli[]]
     var = unlist(as.character(input$expli))
     temp <- data %>% select(var,cib)
-    print(cib)
     #temp <- data[,input$expli,drop=FALSE]
-    res <- rpart(proto ~.,data=temp,method = "class", control = rpart.control(cp = 0.5, minsplit = 2),model =T)
+    mod <- as.formula(paste0(cib, " ~ ."))
+    res <- rpart(mod,data=temp,method = "class", control = rpart.control(cp = 0.5, minsplit = 2),model =T)
     shiny::callModule(visTreeModuleServer, "id1", data = shiny::reactive(res))
   })
   
